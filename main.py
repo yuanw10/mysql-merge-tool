@@ -61,13 +61,32 @@ def generate_drop_tables_queries(src_tables, tgt_tables):
     return "".join(queries)
 
 
-# TODO：
+# TODO：add comments
 def generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor):
     queries = []
     modified_tables = _get_modified_tables(src_tables, tgt_tables, src_cursor, tgt_cursor)
     for table, updates in modified_tables.items():
-        command = f"ALTER TABLE {table}"
+        cols_def_dict, _ = _get_columns_definition(src_cursor, table)
+        query = _generate_modify_table_query(table, updates, cols_def_dict)
+        queries.append(query)
     return "".join(queries)
+
+
+# TODO：add comments
+def _generate_modify_table_query(table, updates, cols_def_dict):
+    query = []
+    for col in updates.get("added"):
+        col_def = cols_def_dict.get(col)
+        command = f"ALTER TABLE {table} ADD {col_def}"
+        query.append(f"{command};\n")
+    for col in updates.get("changed"):
+        col_def = cols_def_dict.get(col)
+        command = f"ALTER TABLE {table} MODIFY {col_def}"
+        query.append(f"{command};\n")
+    for col in updates.get("removed"):
+        command = f"ALTER TABLE {table} DROP {col}"
+        query.append(f"{command};\n")
+    return "".join(query)
 
 
 def _get_tables_definition(cursor, tables):
@@ -193,7 +212,6 @@ def main():
     merge_queries += "\n-- Drop deleted tables:\n"
     merge_queries += generate_drop_tables_queries(src_tables, tgt_tables)
     merge_queries += "\n-- Modify structures of updated tables:\n"
-    # TODO
     merge_queries += generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor)
 
     # close db connections
