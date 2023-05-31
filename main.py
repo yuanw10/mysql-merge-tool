@@ -2,6 +2,7 @@ import subprocess
 import pymysql
 import source_target
 from deepdiff import DeepDiff
+import re
 
 
 def connect_database(db_config):
@@ -24,24 +25,6 @@ def get_all_tables(cursor):
     cursor.execute("SHOW TABLES")
     all_tables = set(t[0] for t in cursor.fetchall())
     return all_tables
-
-
-def get_tables_def(cursor, tables):
-    """
-    Get definitions of tables using "DESCRIBE table"
-    :param cursor: cursor to a database
-    :param tables: tables that need to be described
-    :return: dictionary that saves definitions of tables
-    """
-    tables_def = dict()
-    # iterate all tables
-    for t in tables:
-        # describe table t
-        cursor.execute(f"DESCRIBE {t}")
-        columns = cursor.fetchall()
-        # key - value : table name - definition tuple
-        tables_def[t] = {r[0]: r[1:-1] for r in columns}
-    return tables_def
 
 
 def generate_create_tables_queries(src_tables, tgt_tables, src_cursor):
@@ -79,11 +62,106 @@ def generate_drop_tables_queries(src_tables, tgt_tables):
 
 
 # TODO：
-def generate_modify_tables_queries(src_tables, tgt_tables, src_tables_def, tgt_tables_def):
+def generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor):
     queries = []
-    # diff = DeepDiff(tgt_tables_def, src_tables_def)
-    # diff.affected_root_keys
+    modified_tables = _get_modified_tables(src_tables, tgt_tables, src_cursor, tgt_cursor)
+    for table, updates in modified_tables.items():
+        command = f"ALTER TABLE {table}"
     return "".join(queries)
+
+
+def _get_tables_definition(cursor, tables):
+    """
+    Get definitions of tables using "DESCRIBE table"
+    :param cursor: cursor to a database
+    :param tables: tables that need to be described
+    :return: dictionary that saves definitions of tables
+    """
+    tables_def = dict()
+    # iterate all tables
+    for t in tables:
+        # describe table t
+        cursor.execute(f"DESCRIBE {t}")
+        columns = cursor.fetchall()
+        # key - value : table name - definition tuple
+        tables_def[t] = {r[0]: r[1:-1] for r in columns}
+    return tables_def
+
+
+def _get_columns_definition(cursor, table):
+    """
+    Get column-level definition of a table
+    :param cursor: cursor to database used to execute sql commands
+    :param table: table of which columns definition retrieved
+    :return: dictionary showing columns definition, set showing table constraints
+    """
+    cols_def_dict = dict()
+    constraints = set()
+
+    # get SHOW CREATE TABLE result
+    cursor.execute(f"SHOW CREATE TABLE {table}")
+    create_table_sql = cursor.fetchall()[0][1]
+
+    # extract content inside ()
+    queries_match = re.search(r"\(.*\)", create_table_sql, re.DOTALL)
+    if queries_match:
+        content = queries_match.group().strip()[1:-1].strip()
+        queries = set(line.strip(" ,") for line in content.split("\n"))
+        columns_def = set(query for query in queries if query.startswith("`"))
+        constraints = queries - columns_def
+        cols_def_dict = {item.split()[0].strip("`"): item for item in columns_def}
+
+    return cols_def_dict,  constraints
+
+
+def _get_modified_tables(src_tables, tgt_tables, src_cursor, tgt_cursor):
+    """
+    Get tables modifications to make on target db when merging source db to target
+    :param src_tables: source tables set
+    :param tgt_tables: target tables set
+    :param src_cursor: cursor to source database
+    :param tgt_cursor: cursor to target database
+    :return: dictionary showing which tables and what modifications to make on a db
+    """
+    modified_tables = dict()
+
+    # get definitions of all tables in source and target databases
+    src_tables_def = _get_tables_definition(src_cursor, src_tables)
+    tgt_tables_def = _get_tables_definition(tgt_cursor, tgt_tables)
+
+    # intersection set: tables that both databases have
+    inter_tables = src_tables & tgt_tables
+
+    # iterate all shared tables and compare
+    for t in inter_tables:
+        # investigate how columns of table t affected and save to dictionary
+        modified_tables[t] = _get_modified_columns(src_tables_def.get(t), tgt_tables_def.get(t))
+
+    return modified_tables
+
+
+def _get_modified_columns(src_table_def, tgt_table_def):
+    """
+    Get columns-level modifications to make on target table when mering source table into target
+    :param src_table_def: definition of source table
+    :param tgt_table_def: definition of target table
+    :return: dictionary showing which columns and what modifications to make on a table
+    """
+    diff = DeepDiff(tgt_table_def, src_table_def)
+    modified_cols = dict(added=[], removed=[], changed=[])
+    diff_dict = diff.to_dict()
+
+    # iterate all columns, get how they are modified
+    for column in diff.affected_root_keys:
+        root_key = f"root['{column}']"
+        if root_key in diff_dict.get('dictionary_item_added', set()):
+            modified_cols.get("added").append(column)
+        elif root_key in diff_dict.get('dictionary_item_removed', set()):
+            modified_cols.get("removed").append(column)
+        elif root_key in set(key[0:-3] for key in diff.get("values_changed", {}).keys()):
+            modified_cols.get("changed").append(column)
+
+    return modified_cols
 
 
 def main():
@@ -106,10 +184,6 @@ def main():
     src_tables = get_all_tables(src_cursor)
     tgt_tables = get_all_tables(tgt_cursor)
 
-    # get definitions of all tables in source and target databases
-    src_tables_def = get_tables_def(src_cursor, src_tables)
-    tgt_tables_def = get_tables_def(tgt_cursor, tgt_tables)
-
     # generate queries merging source database to target database
     print("Generating queries merging source database to target database....")
     merge_queries = "-- Following queries are supposed to be executed on target database to match " \
@@ -120,7 +194,7 @@ def main():
     merge_queries += generate_drop_tables_queries(src_tables, tgt_tables)
     merge_queries += "\n-- Modify structures of updated tables:\n"
     # TODO
-    merge_queries += generate_modify_tables_queries(src_tables, tgt_tables, src_tables_def, tgt_tables_def)
+    merge_queries += generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor)
 
     # close db connections
     src_cursor.close()
