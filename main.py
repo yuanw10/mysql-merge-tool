@@ -63,34 +63,55 @@ def generate_modify_tables_queries(src_cursor, tgt_cursor):
     :return: sql commands modifying specified tables
     """
     queries = []
-    modified_tables = _get_modified_tables(src_cursor, tgt_cursor)
-    for table, updates in modified_tables.items():
-        cols_def_dict, _ = _get_table_definition(src_cursor, table)
-        query = _generate_modify_table_query(table, updates, cols_def_dict)
+    tables_updates = _get_tables_updates(src_cursor, tgt_cursor)
+    for table, updates in tables_updates.items():
+        query = _generate_modify_table_query(table, updates)
         queries.append(query)
     return "".join(queries)
 
 
-def _generate_modify_table_query(table, updates, cols_def_dict):
+def _generate_modify_table_query(table, updates):
     """
     Generate "ALTER TABLE" queries to modify one updated table when merging source to target
     :param table: table that needs to be modified
     :param updates: dictionary containing what modifications to make on this table
-    :param cols_def_dict: dictionary showing columns definition
     :return: sql commands modifying specified table
     """
     query = []
-    for col in updates.get("added"):
+
+    cols_updates = updates.get("cols_updates")
+    added_constraints = updates.get("added_constraints")
+    removed_constraints = updates.get("removed_constraints")
+    cols_def_dict = updates.get("cols_def_dict")
+
+    # append query modifying columns
+    for col in cols_updates.get("added"):
         col_def = cols_def_dict.get(col)
         command = f"ALTER TABLE {table} ADD {col_def}"
         query.append(f"{command};\n")
-    for col in updates.get("changed"):
+    for col in cols_updates.get("changed"):
         col_def = cols_def_dict.get(col)
         command = f"ALTER TABLE {table} MODIFY {col_def}"
         query.append(f"{command};\n")
-    for col in updates.get("removed"):
+    for col in cols_updates.get("removed"):
         command = f"ALTER TABLE {table} DROP {col}"
         query.append(f"{command};\n")
+
+    if len(added_constraints) or len(removed_constraints):
+        query.append("-- Following queries point out updates on constraints\n"
+                     "-- Errors might be thrown if constraints complicated\n"
+                     "-- Double check when executing\n")
+
+    # append query adding new constraints
+    for constraint in added_constraints:
+        command = f"ALTER TABLE {table} ADD {constraint}"
+        query.append(f"{command};\n")
+
+    # append query removing new constraints
+    for constraint in removed_constraints:
+        command = f"ALTER TABLE {table} DROP {constraint}"
+        query.append(f"{command};\n")
+
     return "".join(query)
 
 
@@ -131,26 +152,43 @@ def _get_table_definition(cursor, table):
     return cols_def_dict, constraints
 
 
-def _get_modified_tables(src_cursor, tgt_cursor):
+def _get_tables_updates(src_cursor, tgt_cursor):
     """
     Get tables modifications to make on target db when merging source db to target
     :param src_cursor: cursor to source database
     :param tgt_cursor: cursor to target database
     :return: dictionary showing which tables and what modifications to make on a db
     """
-    modified_tables = dict()
+    tables_updates = dict()
 
     # intersection set: tables that both databases have
     inter_tables = _get_all_tables(src_cursor) & _get_all_tables(tgt_cursor)
 
-    # iterate all shared tables and compare
+    # iterate all shared tables and get each table's updates
     for t in inter_tables:
-        # investigate how columns of table t affected and save to dictionary
-        src_table_def, _ = _get_table_definition(src_cursor, t)
-        tgt_table_def, _ = _get_table_definition(tgt_cursor, t)
-        modified_tables[t] = _get_modified_columns(src_table_def, tgt_table_def)
+        tables_updates[t] = _get_table_updates(src_cursor, tgt_cursor, t)
 
-    return modified_tables
+    return tables_updates
+
+
+def _get_table_updates(src_cursor, tgt_cursor, table):
+    """
+    Get modifications need to make on one table when merging source to target
+    :param src_cursor: cursor to source database
+    :param tgt_cursor: cursor to target database
+    :param table: table of which updates need to get
+    :return: dictionary showing what modifications to make on this table
+    """
+    # investigate how table t affected and save to dictionary
+    src_table_def, src_constraints = _get_table_definition(src_cursor, table)
+    tgt_table_def, tgt_constraints = _get_table_definition(tgt_cursor, table)
+    table_updates = {
+        "cols_updates": _get_modified_columns(src_table_def, tgt_table_def),
+        "added_constraints": src_constraints - tgt_constraints,
+        "removed_constraints": tgt_constraints - src_constraints,
+        "cols_def_dict": src_table_def
+    }
+    return table_updates
 
 
 def _get_modified_columns(src_table_def, tgt_table_def):
@@ -217,7 +255,7 @@ def main():
     tgt_conn.close()
 
     # write queries to file
-    with open("merge_queries_test.sql", "w") as f:
+    with open("merge_queries.sql", "w") as f:
         f.writelines(merge_queries)
     print("Merging queries completed.")
 
