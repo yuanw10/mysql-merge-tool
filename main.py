@@ -91,19 +91,16 @@ def _generate_modify_table_query(table, updates, cols_def_dict):
 
 def _get_tables_definition(cursor, tables):
     """
-    Get definitions of tables using "DESCRIBE table"
+    Get definitions of all tables
     :param cursor: cursor to a database
-    :param tables: tables that need to be described
+    :param tables: tables of which definitions need to get
     :return: dictionary that saves definitions of tables
     """
     tables_def = dict()
     # iterate all tables
     for t in tables:
-        # describe table t
-        cursor.execute(f"DESCRIBE {t}")
-        columns = cursor.fetchall()
-        # key - value : table name - definition tuple
-        tables_def[t] = {r[0]: r[1:-1] for r in columns}
+        # get definition of each table
+        tables_def[t], _ = _get_columns_definition(cursor, t)
     return tables_def
 
 
@@ -177,7 +174,7 @@ def _get_modified_columns(src_table_def, tgt_table_def):
             modified_cols.get("added").append(column)
         elif root_key in diff_dict.get('dictionary_item_removed', set()):
             modified_cols.get("removed").append(column)
-        elif root_key in set(key[0:-3] for key in diff.get("values_changed", {}).keys()):
+        elif root_key in diff.get("values_changed", {}).keys():
             modified_cols.get("changed").append(column)
 
     return modified_cols
