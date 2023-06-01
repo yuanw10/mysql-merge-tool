@@ -61,19 +61,32 @@ def generate_drop_tables_queries(src_tables, tgt_tables):
     return "".join(queries)
 
 
-# TODO：add comments
 def generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor):
+    """
+    Generate "ALTER TABLE" queries to modify updated tables when merging source to target
+    :param src_tables: set of source tables
+    :param tgt_tables: set of target tables
+    :param src_cursor: cursor to source database
+    :param tgt_cursor: cursor to target database
+    :return: sql commands modifying specified tables
+    """
     queries = []
     modified_tables = _get_modified_tables(src_tables, tgt_tables, src_cursor, tgt_cursor)
     for table, updates in modified_tables.items():
-        cols_def_dict, _ = _get_columns_definition(src_cursor, table)
+        cols_def_dict, _ = _get_table_definition(src_cursor, table)
         query = _generate_modify_table_query(table, updates, cols_def_dict)
         queries.append(query)
     return "".join(queries)
 
 
-# TODO：add comments
 def _generate_modify_table_query(table, updates, cols_def_dict):
+    """
+    Generate "ALTER TABLE" queries to modify one updated table when merging source to target
+    :param table: table that needs to be modified
+    :param updates: dictionary containing what modifications to make on this table
+    :param cols_def_dict: dictionary showing columns definition
+    :return: sql commands modifying specified table
+    """
     query = []
     for col in updates.get("added"):
         col_def = cols_def_dict.get(col)
@@ -100,13 +113,13 @@ def _get_tables_definition(cursor, tables):
     # iterate all tables
     for t in tables:
         # get definition of each table
-        tables_def[t], _ = _get_columns_definition(cursor, t)
+        tables_def[t], _ = _get_table_definition(cursor, t)
     return tables_def
 
 
-def _get_columns_definition(cursor, table):
+def _get_table_definition(cursor, table):
     """
-    Get column-level definition of a table
+    Get column-level definition of one table
     :param cursor: cursor to database used to execute sql commands
     :param table: table of which columns definition retrieved
     :return: dictionary showing columns definition, set showing table constraints
@@ -127,7 +140,7 @@ def _get_columns_definition(cursor, table):
         constraints = queries - columns_def
         cols_def_dict = {item.split()[0].strip("`"): item for item in columns_def}
 
-    return cols_def_dict,  constraints
+    return cols_def_dict, constraints
 
 
 def _get_modified_tables(src_tables, tgt_tables, src_cursor, tgt_cursor):
@@ -180,6 +193,28 @@ def _get_modified_columns(src_table_def, tgt_table_def):
     return modified_cols
 
 
+def generate_queries(src_tables, tgt_tables, src_cursor, tgt_cursor):
+    """
+    Generate queries merging source database to target database
+    :param src_tables: source tables set
+    :param tgt_tables: target tables set
+    :param src_cursor: cursor to source database
+    :param tgt_cursor: cursor to target database
+    :return: sql commands merging source database to target database
+    """
+    merge_queries = "-- Following queries are supposed to be executed on target database to match " \
+                    "updates on source database:\n"
+    merge_queries += f"USE {source_target.target_db_config.get('database')};\n"
+    merge_queries += "\n-- Create new tables:\n"
+    merge_queries += generate_create_tables_queries(src_tables, tgt_tables, src_cursor)
+    merge_queries += "\n-- Drop deleted tables:\n"
+    merge_queries += generate_drop_tables_queries(src_tables, tgt_tables)
+    merge_queries += "\n-- Modify structures of updated tables:\n"
+    merge_queries += generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor)
+
+    return merge_queries
+
+
 def main():
     # check if database configurations valid
     src_config_valid = set(source_target.source_db_config.keys()) == {"host", "user", "password", "database"}
@@ -202,14 +237,7 @@ def main():
 
     # generate queries merging source database to target database
     print("Generating queries merging source database to target database....")
-    merge_queries = "-- Following queries are supposed to be executed on target database to match " \
-                    "updates on source database:\n"
-    merge_queries += "\n-- Create new tables:\n"
-    merge_queries += generate_create_tables_queries(src_tables, tgt_tables, src_cursor)
-    merge_queries += "\n-- Drop deleted tables:\n"
-    merge_queries += generate_drop_tables_queries(src_tables, tgt_tables)
-    merge_queries += "\n-- Modify structures of updated tables:\n"
-    merge_queries += generate_modify_tables_queries(src_tables, tgt_tables, src_cursor, tgt_cursor)
+    merge_queries = generate_queries(src_tables, tgt_tables, src_cursor, tgt_cursor)
 
     # close db connections
     src_cursor.close()
