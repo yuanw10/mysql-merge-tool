@@ -1,6 +1,4 @@
-import subprocess
 import pymysql
-import source_target
 from deepdiff import DeepDiff
 import re
 
@@ -215,16 +213,27 @@ def _get_modified_columns(src_table_def, tgt_table_def):
     return modified_cols
 
 
-def generate_queries(src_cursor, tgt_cursor):
+def generate_merge_sql(source_db_config, target_db_config):
     """
-    Generate queries merging source database to target database
-    :param src_cursor: cursor to source database
-    :param tgt_cursor: cursor to target database
+    Generate sql commands merging source database to target database
+    :param source_db_config: source database configuration
+    :param target_db_config: source database configuration
     :return: sql commands merging source database to target database
     """
+
+    # connect to source and target databases
+    try:
+        src_cursor, src_conn = connect_database(source_db_config)
+        tgt_cursor, tgt_conn = connect_database(target_db_config)
+    except Exception as e:
+        print("Connections failed: " + str(e))
+        exit(1)
+
+    # generate queries merging source database to target database
+    print("Generating queries merging source database to target database....")
     merge_queries = "-- Following queries are supposed to be executed on target database to match " \
                     "updates on source database:\n"
-    merge_queries += f"USE {source_target.target_db_config.get('database')};\n"
+    merge_queries += f"USE {target_db_config.get('database')};\n"
     merge_queries += "\n-- Create new tables:\n"
     merge_queries += generate_create_tables_queries(src_cursor, tgt_cursor)
     merge_queries += "\n-- Drop deleted tables:\n"
@@ -232,38 +241,10 @@ def generate_queries(src_cursor, tgt_cursor):
     merge_queries += "\n-- Modify structures of updated tables:\n"
     merge_queries += generate_modify_tables_queries(src_cursor, tgt_cursor)
 
-    return merge_queries
-
-
-def main():
-    # connect to source and target databases
-    try:
-        src_cursor, src_conn = connect_database(source_target.source_db_config)
-        tgt_cursor, tgt_conn = connect_database(source_target.target_db_config)
-    except Exception as e:
-        print("Connections failed: " + str(e))
-        exit(1)
-
-    # generate queries merging source database to target database
-    print("Generating queries merging source database to target database....")
-    merge_queries = generate_queries(src_cursor, tgt_cursor)
-
     # close db connections
     src_cursor.close()
     src_conn.close()
     tgt_cursor.close()
     tgt_conn.close()
 
-    # write queries to file
-    with open("merge_queries.sql", "w") as f:
-        f.writelines(merge_queries)
-    print("Merging queries completed.")
-
-
-def install_dependencies():
-    subprocess.run(['pip', 'install', '-r', 'requirements.txt'])
-
-
-if __name__ == '__main__':
-    install_dependencies()
-    main()
+    return merge_queries
