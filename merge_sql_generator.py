@@ -5,8 +5,12 @@ from mysql_merge_tool import dump_comparison
 
 def main():
     """
-    Output sql merging two databases
+    Output sql commands merging two databases to a file
     """
+
+    merge_sql = "-- Following queries are supposed to be executed on target database to match " \
+                "updates on source database:\n"
+
     args = parse_arguments()
 
     if args.type == 'conn':
@@ -23,16 +27,17 @@ def main():
             "database": args.target_database
         }
 
-        merge_sql = database_comparison.generate_merge_sql(source_db_config, target_db_config)
+        merge_sql += database_comparison.generate_merge_sql(source_db_config, target_db_config)
 
     elif args.type == 'dump':
-        # TODO
-        merge_sql = ""
+        source_dump = args.source_file
+        target_dump = args.target_file
+        merge_sql += dump_comparison.generate_merge_sql(source_dump, target_dump)
 
     # output merge sql to file
     with open("merge_sql.sql", "w") as f:
-        f.writelines(merge_sql)
-    print("Merging queries completed.")
+        f.write(merge_sql)
+    print("Merging sql completed.")
 
 
 def parse_arguments():
