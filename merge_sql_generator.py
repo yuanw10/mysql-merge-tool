@@ -30,8 +30,14 @@ def main():
         merge_sql += database_comparison.generate_merge_sql(source_db_config, target_db_config)
 
     elif args.type == 'dump':
-        source_dump = args.source_file
-        target_dump = args.target_file
+        try:
+            with open(args.source_file, "r") as f:
+                source_dump = f.read()
+            with open(args.target_file, "r") as f:
+                target_dump = f.read()
+        except FileNotFoundError:
+            print("Cannot find dump files. Please check file paths.")
+            exit(1)
         merge_sql += dump_comparison.generate_merge_sql(source_dump, target_dump)
 
     # output merge sql to file
@@ -61,12 +67,12 @@ def parse_arguments():
     # source database configuration
     parser_conn.add_argument('-sh', '--source-host', help='source database host', required=True)
     parser_conn.add_argument('-su', '--source-user', help='source database user', required=True)
-    parser_conn.add_argument('-sp', '--source-password', help='source database password', required=True)
+    parser_conn.add_argument('-sp', '--source-password', help='source database password', default="")
     parser_conn.add_argument('-sd', '--source-database', help='source database sub-database', required=True)
     # target database configuration
     parser_conn.add_argument('-th', '--target-host', help='target database host', required=True)
     parser_conn.add_argument('-tu', '--target-user', help='target database user', required=True)
-    parser_conn.add_argument('-tp', '--target-password', help='target database password', required=True)
+    parser_conn.add_argument('-tp', '--target-password', help='target database password', default="")
     parser_conn.add_argument('-td', '--target-database', help='target database sub-database', required=True)
 
     args = parser.parse_args()

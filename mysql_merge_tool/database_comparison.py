@@ -1,5 +1,5 @@
 import pymysql
-import utils
+from mysql_merge_tool import utils
 
 
 def generate_create_tables_sql(source_cursor, target_cursor):
