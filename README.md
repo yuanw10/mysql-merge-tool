@@ -2,9 +2,9 @@
 
 ## Description
 The MySQL Merge Tool is designed to compare two databases, merge the source database into the target database, 
-and generate an SQL file containing SQL commands to modify the target database. The purpose of this tool is to improve
-data integrity and efficiency by updating tables in target database instead of recreating them using "DROP TABLE 
-IF EXISTS x; CREATE TABLE x" command. 
+and generate an SQL file containing SQL commands to modify definitions of tables in the target database. The purpose 
+of this tool is to improve data integrity and efficiency by updating tables in target database instead of recreating
+them using "DROP TABLE IF EXISTS x; CREATE TABLE x" command.
 
 
 ## Usage
@@ -44,9 +44,12 @@ Example running:
 ### 3) Output
 Based on the differences found during the comparison between the two databases, an SQL file named `merge_sql.sql` 
 containing the necessary SQL commands to modify the target database will be generated under the root directory. 
-The SQL file includes statements to add, modify, or delete database objects (tables, columns, constraints) as necessary
+The SQL file includes statements to add, modify, or drop tables, columns, constraints in the target database as 
+necessary. The SQL file does not contain or update records.
 
 ## Limitations
 - The tool's ability to generate accurate modification statements for complex table **constraints** may be limited. It is 
 recommended to review the constraint modification statements as needed
 - The tool supports MySQL databases only as it was developed based on MySQL commands
+- The tool is designed to handle updates to definitions of tables and columns, and does not support other database
+objects such as views, stored procedures, functions, etc.
