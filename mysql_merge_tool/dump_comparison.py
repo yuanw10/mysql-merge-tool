@@ -36,7 +36,7 @@ def generate_drop_tables_sql(source_dump, target_dump):
 
     for table in dropped_tables:
         command = f"DROP TABLE {table}"
-        commands.append(command+"\n")
+        commands.append(f"{command};\n")
     return comment + "".join(commands) + "\n"
 
 
