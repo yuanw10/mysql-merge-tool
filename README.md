@@ -52,10 +52,9 @@ The SQL file includes statements to add, modify, or drop tables, columns, constr
 necessary. The SQL file does not contain or update records.
 
 ## Examples
-Source and target databases:
-
-<img src="Examples/source_schema.png" width=320>
-<img src="Examples/target_schema.png" width=320>
+| Source Database | Target Database |
+|----|----|
+| <img src="Examples/source_schema.png" width=320> | <img src="Examples/target_schema.png" width=320> |
 
 #### 1) Merge by comparing given dump files
 - Input: [source](Examples/source_db.sql) and [target](Examples/target_db.sql) dump files
