@@ -1,2 +1,3 @@
 .idea/*
-merge_sql.sql
+.DS_Store
+__pycache__/
